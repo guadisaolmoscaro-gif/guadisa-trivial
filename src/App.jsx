@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Host, Play, Join, Importer } from './Game.jsx'
 
 const COLORS = ['c-red', 'c-blue', 'c-yellow', 'c-green']
 const BUCKET = 'question-images'
@@ -108,6 +109,7 @@ function Editor({ pack, user, back }) {
           {!qs.length && <li>Todavía no hay preguntas.</li>}
         </ul>
       </div>
+      <Importer pack={pack} qs={qs} reload={load} />
       <div className="card">
         <h2>Añadir pregunta</h2>
         <form onSubmit={add}>
@@ -134,7 +136,13 @@ function Editor({ pack, user, back }) {
   )
 }
 
-function Packs({ user }) {
+function Packs({ user, go }) {
+  const [secs, setSecs] = useState(20)
+  async function host(p) {
+    const { data, error } = await supabase.rpc('create_room', { p_pack_id: p.id, p_seconds: Number(secs) })
+    if (error) return alert(error.message)
+    go({ host: data })
+  }
   const [packs, setPacks] = useState([])
   const [title, setTitle] = useState('')
   const [open, setOpen] = useState(null)
@@ -157,10 +165,12 @@ function Packs({ user }) {
   if (open) return <Editor pack={open} user={user} back={() => setOpen(null)} />
   return (
     <>
+      <Join go={go} />
       <div className="card">
         <h2>Mis paquetes de preguntas</h2>
+        <p>Segundos por pregunta: <select value={secs} onChange={(e) => setSecs(e.target.value)} style={{ width: 90 }}>{[10, 15, 20, 30, 45, 60].map((n) => <option key={n}>{n}</option>)}</select></p>
         <ul className="list">
-          {packs.map((p) => <li key={p.id} className="pack" onClick={() => setOpen(p)}>📦 {p.title}</li>)}
+          {packs.map((p) => <li key={p.id} className="row"><span className="pack" style={{ flex: 1 }} onClick={() => setOpen(p)}>📦 {p.title}</span><button onClick={() => host(p)}>▶ Crear sala</button></li>)}
           {!packs.length && <li>Aún no tienes paquetes. ¡Crea el primero!</li>}
         </ul>
       </div>
@@ -176,6 +186,7 @@ function Packs({ user }) {
 
 export default function App() {
   const [session, setSession] = useState(undefined)
+  const [view, setView] = useState(null)
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
@@ -189,7 +200,7 @@ export default function App() {
         <h1>🎉 Trivial de amigos</h1>
         {session && <button className="ghost" onClick={() => supabase.auth.signOut()}>Salir</button>}
       </header>
-      {session ? <Packs user={session.user} /> : <Auth />}
+      {session ? (view?.host ? <Host room={view.host} exit={() => setView(null)} /> : view?.play ? <Play roomId={view.play} user={session.user} exit={() => setView(null)} /> : <Packs user={session.user} go={setView} />) : <Auth />}
     </div>
   )
 }
