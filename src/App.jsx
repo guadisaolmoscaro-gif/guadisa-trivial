@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { Host, Play, Join, Importer } from './Game.jsx'
 import { VoiceWizard } from './Voice.jsx'
+import { EventsCard } from './Events.jsx'
+import { Invite } from './Invite.jsx'
 
 const COLORS = ['c-red', 'c-blue', 'c-yellow', 'c-green']
 const BUCKET = 'question-images'
@@ -168,6 +170,7 @@ function Packs({ user, go }) {
   return (
     <>
       <Join go={go} />
+      <EventsCard onPackCreated={load} />
       <div className="card">
         <h2>Mis paquetes de preguntas</h2>
         <p>Segundos por pregunta: <select value={secs} onChange={(e) => setSecs(e.target.value)} style={{ width: 90 }}>{[10, 15, 20, 30, 45, 60].map((n) => <option key={n}>{n}</option>)}</select></p>
@@ -195,6 +198,8 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  const inviteToken = new URLSearchParams(window.location.search).get('e')
+  if (inviteToken) return <Invite token={inviteToken} />
   if (session === undefined) return <p className="center">Cargando…</p>
   return (
     <div className="wrap">
