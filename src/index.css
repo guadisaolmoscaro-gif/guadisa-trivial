@@ -21,3 +21,8 @@ img.q { max-width: 100%; max-height: 160px; border-radius: 10px; margin: 6px 0; 
 .code { font-size: 56px; letter-spacing: 8px; font-weight: 800; text-align: center; }
 button.opt { width: 100%; font-size: 20px; text-align: left; margin: 6px 0; padding: 16px; }
 .dim { opacity: .35; }
+textarea { padding: 12px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; font-family: inherit; margin: 6px 0; }
+button.ghost.dark { background: #eee; color: #333; }
+button.rec { background: #e21b3c; }
+.draft { border-top: 1px solid #eee; padding: 10px 0; }
+.draft input[type=checkbox] { width: auto; }

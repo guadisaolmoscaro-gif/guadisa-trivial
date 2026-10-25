@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { Host, Play, Join, Importer } from './Game.jsx'
+import { VoiceWizard } from './Voice.jsx'
 
 const COLORS = ['c-red', 'c-blue', 'c-yellow', 'c-green']
 const BUCKET = 'question-images'
@@ -109,6 +110,7 @@ function Editor({ pack, user, back }) {
           {!qs.length && <li>Todavía no hay preguntas.</li>}
         </ul>
       </div>
+      <VoiceWizard pack={pack} qs={qs} reload={load} />
       <Importer pack={pack} qs={qs} reload={load} />
       <div className="card">
         <h2>Añadir pregunta</h2>
