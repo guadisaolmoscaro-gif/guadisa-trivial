@@ -3,12 +3,12 @@ import { supabase } from './supabase'
 
 // Guía de temas: el anfitrión habla (o escribe) sobre cada uno y la IA monta las preguntas.
 const TOPICS = [
-  { id: 'origen', title: 'Cómo nos conocimos', hint: '¿Dónde y cuándo empezó el grupo? ¿Quién conoció a quién? ¿Cuál fue la primera quedada?' },
-  { id: 'viajes', title: 'Viajes y planes memorables', hint: 'Último viaje, el mejor plan, el que salió peor. Lugares, fechas, quién organizó qué.' },
-  { id: 'apodos', title: 'Apodos y mañas', hint: 'Apodos del grupo y de dónde vienen. Manías, costumbres y cosas que hace siempre cada uno.' },
-  { id: 'anecdotas', title: 'Anécdotas divertidas', hint: 'Historias que siempre se recuerdan: qué pasó, quién estaba, cómo terminó.' },
-  { id: 'gustos', title: 'Gustos de cada uno', hint: 'Comida, canciones, series, aficiones. Qué pide siempre cada persona.' },
-  { id: 'grupo', title: 'Cosas del grupo', hint: 'Nombre del chat, frases que se repiten, himno, tradiciones, quién llega tarde, quién tarda en contestar…' },
+  { id: 'origen', title: 'Cómo nos conocimos', hint: 'Responde con datos concretos: ¿En qué lugar y en qué año os conocisteis? ¿Quién presentó a quién? ¿Dónde fue la primera quedada y qué se hizo?' },
+  { id: 'viajes', title: 'Viajes y planes memorables', hint: 'Ciudad y año del último viaje, quién lo organizó, cuántos días duró, qué plan salió peor y qué pasó exactamente.' },
+  { id: 'apodos', title: 'Apodos y mañas', hint: 'Cada apodo con su origen (¿quién lo puso y por qué?). Una manía concreta de cada persona: ¿qué hace siempre?' },
+  { id: 'anecdotas', title: 'Anécdotas divertidas', hint: 'Una historia con: ¿cuándo fue?, ¿quién estaba?, ¿qué pasó primero y qué pasó al final?, ¿cómo terminó?' },
+  { id: 'gustos', title: 'Gustos de cada uno', hint: 'Por persona: ¿qué pide siempre en un restaurante? ¿Cuál es su serie, canción o plato favorito y desde cuándo?' },
+  { id: 'grupo', title: 'Cosas del grupo', hint: 'Nombre del chat y quién lo creó. Una frase que se repite y quién la dice. ¿Quién llega tarde a todo y cuánto tarda de media?' },
 ]
 
 const SR = typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null
