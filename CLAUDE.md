@@ -6,10 +6,17 @@ Las dueñas del proyecto **no programan**: explica los cambios en español, en l
 
 ## Cómo se juega (decisiones ya tomadas)
 - Cada jugador entra desde su móvil/ordenador con un **código de sala** de 5 letras. Hasta **8 jugadores**.
-- **Todos responden a la vez**; gana quien suma más puntos. Puntos: de 1000 (respuesta inmediata) a 500 (al límite del tiempo), solo si es correcta. El tiempo lo mide **el servidor**.
-- Tiempo por pregunta **configurable por el anfitrión**. Al final solo hay **ranking de esa partida** (sin historial).
+- **Todos responden a la vez**. Tiempo máximo por pregunta: **10 segundos**. El tiempo lo mide **el servidor**.
+- Puntos (decididos): fallar o no contestar da 0. Los aciertos se ordenan por tiempo: el 1.º recibe 1000 y cada siguiente baja proporcionalmente según el número de jugadores de la sala (con 8 jugadores: 1000, 875, 750… hasta 125).
+- Gana quien tenga **más puntos**; en empate, gana quien tenga **menos tiempo total** en sus aciertos.
+- Al final: resumen con preguntas acertadas, tiempo total y puntos de cada jugador. Sin historial.
+- Tras cada pregunta, todos ven quién acertó (con puesto, puntos y tiempo), quién falló y a quién se le agotó el tiempo. La siguiente pregunta sale cuando todos han contestado o se ha agotado el tiempo.
 - Formatos de pregunta: test de 4 opciones, verdadero/falso, y foto opcional. **No** hay respuesta escrita libre.
-- El **anfitrión no juega** (conoce las respuestas); crea la sala y pasa las preguntas.
+- El **game master** (quien se registra) **no juega**: crea la sala, escribe el contexto del grupo y elige la duración (rápida 15, media 30, larga 50 preguntas).
+- Cada game master puede tener hasta **5 salas**. Cada sala tiene nombre y lista de participantes.
+- **Sin emails.** Al crear la sala, la web da un **enlace sin verificación** que el game master copia y envía por WhatsApp. El enlace **caduca al terminar la partida**.
+- **Sin opción "no lo sé"**: se elimina. Fallar y no contestar dan lo mismo: 0 puntos.
+- Las preguntas las genera la IA a partir del contexto del game master. La IA debe saber cuál es la respuesta correcta; si tiene dudas, lo indica y el game master lo revisa **antes** de empezar la partida, nunca durante.
 - Registro con **email** (Supabase Auth). Idioma: **solo español**. Estilo visual: **colorido y divertido, tipo Kahoot**.
 - Presupuesto: pequeño (unos pocos euros al mes). Público: cualquiera.
 
