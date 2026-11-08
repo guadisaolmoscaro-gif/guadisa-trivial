@@ -177,6 +177,13 @@ export function Host({ room: first, exit }) {
 
   useGameTimers(room, left, answered, players.length)
 
+  // Cuando han entrado todos, la partida empieza sola
+  const allIn = slots.length > 0 && slots.every((s) => s.user_id)
+  useEffect(() => {
+    if (room?.status === 'lobby' && room.review_status === 'approved' && allIn)
+      supabase.rpc('start_game', { p_room_id: first.id })
+  }, [room?.status, room?.review_status, allIn])
+
   const call = async (fn) => {
     if (busy.current) return
     busy.current = true
@@ -208,9 +215,7 @@ export function Host({ room: first, exit }) {
             <ul className="list">
               {slots.map((s) => <li key={s.id}>{s.user_id ? '✅' : '⏳'} {s.name}</li>)}
             </ul>
-            <button disabled={missing > 0 || !slots.length} onClick={() => call('start_game')}>
-              {missing > 0 ? `Esperando a ${missing}…` : 'Empezar partida'}
-            </button>
+            <p>{missing > 0 ? `Esperando a ${missing} más…` : 'Todos dentro: la partida empieza ahora…'}</p>
           </>
         )}
         {room.status === 'question' && cur && (
@@ -244,6 +249,10 @@ export function Play({ roomId, user, exit }) {
   useEffect(() => { setPicked(null) }, [room?.current_order])
 
   useGameTimers(room, left, null, players.length)
+  useEffect(() => {
+    if (room?.status === 'lobby' && room.review_status === 'approved' && allIn)
+      supabase.rpc('start_game', { p_room_id: roomId })
+  }, [room?.status, room?.review_status, allIn])
 
   async function pick(i) {
     setPicked(i)
@@ -260,15 +269,9 @@ export function Play({ roomId, user, exit }) {
           <>
             <h2>Sala {room.code}</h2>
             {allIn
-              ? <p>¡Ya estáis todos! Pulsa para empezar.</p>
+              ? <p>¡Ya estáis todos! La partida empieza ahora…</p>
               : <p>Esperando a que entren todos…</p>}
             <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
-            {allIn && (
-              <button onClick={async () => {
-                const { error } = await supabase.rpc('start_game', { p_room_id: roomId })
-                if (error) alert(error.message)
-              }}>Continuar</button>
-            )}
           </>
         )}
         {room.status === 'question' && (cur ? (
