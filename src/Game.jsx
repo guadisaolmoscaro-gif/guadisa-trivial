@@ -251,9 +251,10 @@ export function Play({ roomId, user, exit }) {
   useEffect(() => { setPicked(null) }, [room?.current_order])
 
   useGameTimers(room, left, null, players.length)
+  const [startErr, setStartErr] = useState('')
   useEffect(() => {
     if (room?.status === 'lobby' && room.review_status === 'approved' && allIn)
-      supabase.rpc('start_game', { p_room_id: roomId })
+      supabase.rpc('start_game', { p_room_id: roomId }).then(({ error }) => setStartErr(error?.message || ''))
   }, [room?.status, room?.review_status, allIn])
 
   async function pick(i) {
