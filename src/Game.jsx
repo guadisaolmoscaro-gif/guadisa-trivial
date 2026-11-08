@@ -179,9 +179,10 @@ export function Host({ room: first, exit }) {
 
   // Cuando han entrado todos, la partida empieza sola
   const allIn = slots.length > 0 && slots.every((s) => s.user_id)
+  const [startErr, setStartErr] = useState('')
   useEffect(() => {
     if (room?.status === 'lobby' && room.review_status === 'approved' && allIn)
-      supabase.rpc('start_game', { p_room_id: first.id })
+      supabase.rpc('start_game', { p_room_id: first.id }).then(({ error }) => setStartErr(error?.message || ''))
   }, [room?.status, room?.review_status, allIn])
 
   const call = async (fn) => {
@@ -216,6 +217,7 @@ export function Host({ room: first, exit }) {
               {slots.map((s) => <li key={s.id}>{s.user_id ? '✅' : '⏳'} {s.name}</li>)}
             </ul>
             <p>{missing > 0 ? `Esperando a ${missing} más…` : 'Todos dentro: la partida empieza ahora…'}</p>
+            {startErr && <p className="msg">Error al empezar: {startErr}</p>}
           </>
         )}
         {room.status === 'question' && cur && (
@@ -271,6 +273,7 @@ export function Play({ roomId, user, exit }) {
             {allIn
               ? <p>¡Ya estáis todos! La partida empieza ahora…</p>
               : <p>Esperando a que entren todos…</p>}
+            {startErr && <p className="msg">Error al empezar: {startErr}</p>}
             <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
           </>
         )}
