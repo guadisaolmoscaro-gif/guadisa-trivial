@@ -90,9 +90,10 @@ function useAnsweredCount(room, cur) {
 
 // Ritmo de la partida: lo empuja cualquier jugador, asi no se queda parada si el game master cierra el navegador
 function useGameTimers(room, left, answered, playersCount) {
+  const [err, setErr] = useState('')
   useEffect(() => {
     if (!room) return
-    const rpc = (fn) => supabase.rpc(fn, { p_room_id: room.id })
+    const rpc = (fn) => supabase.rpc(fn, { p_room_id: room.id }).then(({ error }) => setErr(error ? `${fn}: ${error.message}` : ''))
     if (room.status === 'question') {
       // El servidor decide cuando cerrar (todos han contestado o se acabo el tiempo).
       // Cada movil lo pide cada segundo, asi no depende de su reloj.
@@ -106,6 +107,7 @@ function useGameTimers(room, left, answered, playersCount) {
       return () => clearInterval(t)
     }
   }, [room?.status, room?.current_order, answered, playersCount])
+  return err
 }
 
 function Options({ q, onPick, picked, ok }) {
@@ -175,7 +177,7 @@ export function Host({ room: first, exit }) {
   const busy = useRef(false)
   const [copied, setCopied] = useState(false)
 
-  useGameTimers(room, left, answered, players.length)
+  const timerErr = useGameTimers(room, left, answered, players.length)
 
   // Cuando han entrado todos, la partida empieza sola
   const allIn = slots.length > 0 && slots.every((s) => s.user_id)
@@ -250,7 +252,7 @@ export function Play({ roomId, user, exit }) {
   const [picked, setPicked] = useState(null)
   useEffect(() => { setPicked(null) }, [room?.current_order])
 
-  useGameTimers(room, left, null, players.length)
+  const timerErr = useGameTimers(room, left, null, players.length)
   const [startErr, setStartErr] = useState('')
   useEffect(() => {
     if (room?.status === 'lobby' && room.review_status === 'approved' && allIn)
@@ -278,6 +280,7 @@ export function Play({ roomId, user, exit }) {
             <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
           </>
         )}
+        {timerErr && <p className="msg">Error del servidor → {timerErr}</p>}
         {room.status === 'question' && (cur ? (
           <>
             <p>⏱ {left}s {picked != null && '· Respuesta enviada, esperando al resto…'}</p>
