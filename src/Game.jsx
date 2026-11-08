@@ -3,26 +3,31 @@ import { supabase } from './supabase'
 
 const COLORS = ['c-red', 'c-blue', 'c-yellow', 'c-green']
 const BUCKET = 'question-images'
+const MAX_PLAYERS = 8
 
 function useRoom(id) {
   const [room, setRoom] = useState(null)
   const [players, setPlayers] = useState([])
+  const [slots, setSlots] = useState([])
   const load = async () => {
     const { data: r } = await supabase.from('rooms').select('*').eq('id', id).single()
     const { data: p } = await supabase.from('room_players').select('*').eq('room_id', id).order('score', { ascending: false })
+    const { data: s } = await supabase.from('room_slots').select('*').eq('room_id', id).order('position')
     setRoom(r)
     setPlayers(p || [])
+    setSlots(s || [])
   }
   useEffect(() => {
     load()
     const ch = supabase.channel('room-' + id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${id}` }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_players', filter: `room_id=eq.${id}` }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_slots', filter: `room_id=eq.${id}` }, load)
       .subscribe()
     const t = setInterval(load, 3000) // respaldo por si falla el tiempo real
     return () => { supabase.removeChannel(ch); clearInterval(t) }
   }, [id])
-  return { room, players }
+  return { room, players, slots }
 }
 
 function useQuestion(room) {
@@ -56,16 +61,51 @@ function useLeft(room) {
   return left
 }
 
-function Ranking({ players, me }) {
-  return (
-    <ol className="list">
-      {players.map((p, i) => (
-        <li key={p.user_id} style={{ fontWeight: p.user_id === me ? 800 : 400 }}>
-          {['🥇', '🥈', '🥉'][i] || `${i + 1}.`} {p.nickname} — {p.score} pts
-        </li>
-      ))}
-    </ol>
-  )
+// Respuestas de la sala: se cargan cuando la pregunta ya esta cerrada (reveal o finished)
+function useRoomAnswers(room) {
+  const [answers, setAnswers] = useState([])
+  useEffect(() => {
+    if (!room || !['reveal', 'finished'].includes(room.status)) return
+    supabase.from('answers').select('*').eq('room_id', room.id).then(({ data }) => setAnswers(data || []))
+  }, [room?.id, room?.status, room?.current_order])
+  return answers
+}
+
+// Host: cuantos han contestado a la pregunta actual (solo el game master ve todas las respuestas)
+function useAnsweredCount(room, cur) {
+  const [answered, setAnswered] = useState(0)
+  useEffect(() => {
+    setAnswered(0)
+    if (room?.status !== 'question' || !cur) return
+    const f = async () => {
+      const { count } = await supabase.from('answers').select('*', { count: 'exact', head: true }).eq('room_id', room.id).eq('question_id', cur.id)
+      setAnswered(count || 0)
+    }
+    f()
+    const t = setInterval(f, 1000)
+    return () => clearInterval(t)
+  }, [room?.status, cur?.id])
+  return answered
+}
+
+// Ritmo de la partida: lo empuja cualquier jugador, asi no se queda parada si el game master cierra el navegador
+function useGameTimers(room, left, answered, playersCount) {
+  useEffect(() => {
+    if (!room) return
+    const rpc = (fn) => supabase.rpc(fn, { p_room_id: room.id })
+    if (room.status === 'question') {
+      // el game master cierra en cuanto han contestado todos; todos cierran al agotarse el tiempo
+      const allIn = answered != null && playersCount > 0 && answered >= playersCount
+      if (!allIn && left !== 0) return
+      rpc('close_question')
+      const t = setInterval(() => rpc('close_question'), 800)
+      return () => clearInterval(t)
+    }
+    if (room.status === 'reveal') {
+      const t = setInterval(() => rpc('advance_room'), 1000)
+      return () => clearInterval(t)
+    }
+  }, [room?.status, room?.current_order, left, answered, playersCount])
 }
 
 function Options({ q, onPick, picked, ok }) {
@@ -82,13 +122,60 @@ function Options({ q, onPick, picked, ok }) {
   )
 }
 
+// Lo que ve todo el mundo al final de cada pregunta: quien acerto, fallo o se quedo sin tiempo
+function Reveal({ players, answers, qid }) {
+  const mine = answers.filter((a) => a.question_id === qid)
+  const hits = mine.filter((a) => a.is_correct).sort((a, b) => a.response_ms - b.response_ms)
+  const rows = players.map((p) => {
+    const a = mine.find((x) => x.user_id === p.user_id)
+    const pos = a?.is_correct ? hits.findIndex((x) => x.user_id === p.user_id) + 1 : 0
+    return { p, a, pos, key: pos || (a ? 100 : 200) }
+  }).sort((x, y) => x.key - y.key)
+  return (
+    <ul className="list">
+      {rows.map(({ p, a, pos }) => (
+        <li key={p.user_id}>
+          {a?.is_correct && `✅ ${pos}.º ${p.nickname} · ${(a.response_ms / 1000).toFixed(1)} s · +${a.points}`}
+          {a && !a.is_correct && `❌ ${p.nickname} · falló`}
+          {!a && `⏱ ${p.nickname} · se le agotó el tiempo`}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// Resumen final: ganador por puntos; en empate, el que menos tiempo sumó en sus aciertos
+function Summary({ players, answers, me }) {
+  const rows = players.map((p) => {
+    const hits = answers.filter((a) => a.user_id === p.user_id && a.is_correct)
+    return { ...p, hits: hits.length, ms: hits.reduce((s, a) => s + a.response_ms, 0) }
+  }).sort((a, b) => b.score - a.score || a.ms - b.ms)
+  return (
+    <>
+      <h2>🏆 ¡Fin de la partida!</h2>
+      {rows[0] && <p>Gana <b>{rows[0].nickname}</b> con {rows[0].score} puntos.</p>}
+      <ol className="list">
+        {rows.map((r, i) => (
+          <li key={r.user_id} style={{ fontWeight: r.user_id === me ? 800 : 400 }}>
+            {['🥇', '🥈', '🥉'][i] || `${i + 1}.`} {r.nickname} — {r.score} pts · {r.hits} aciertos · {(r.ms / 1000).toFixed(1)} s
+          </li>
+        ))}
+      </ol>
+    </>
+  )
+}
+
 export function Host({ room: first, exit }) {
-  const { room, players } = useRoom(first.id)
+  const { room, players, slots } = useRoom(first.id)
   const cur = useQuestion(room)
   const ok = useCorrect(room)
   const left = useLeft(room)
-  const [answered, setAnswered] = useState(0)
+  const answers = useRoomAnswers(room)
+  const answered = useAnsweredCount(room, cur)
   const busy = useRef(false)
+  const [copied, setCopied] = useState(false)
+
+  useGameTimers(room, left, answered, players.length)
 
   const call = async (fn) => {
     if (busy.current) return
@@ -98,40 +185,32 @@ export function Host({ room: first, exit }) {
     if (error) alert(error.message)
   }
 
-  useEffect(() => {
-    setAnswered(0)
-    if (room?.status !== 'question' || !cur) return
-    const f = async () => {
-      const { count } = await supabase.from('answers').select('*', { count: 'exact', head: true }).eq('room_id', room.id).eq('question_id', cur.id)
-      setAnswered(count || 0)
-    }
-    f()
-    const t = setInterval(f, 1500)
-    return () => clearInterval(t)
-  }, [room?.status, cur?.id])
-
-  useEffect(() => {
-    if (room?.status !== 'question' || !cur) return
-    if (players.length && answered >= players.length) { call('reveal_question'); return }
-    if (left === 0) {
-      const t = setTimeout(() => call('reveal_question'), 1500)
-      return () => clearTimeout(t)
-    }
-  }, [room?.status, cur?.id, left, answered, players.length])
-
   if (!room) return <p className="center">Cargando…</p>
-  const last = room.current_order + 1 >= room.total_questions
+  const link = `${window.location.origin}/?s=${room.invite_token}`
+  const missing = slots.filter((s) => !s.user_id).length
   return (
     <>
       <button className="ghost" onClick={exit}>← Salir</button>
       <div className="card">
-        {room.status === 'lobby' && (
+        {room.status === 'lobby' && room.review_status !== 'approved' && (
+          <p>{room.review_status === 'rejected'
+            ? 'Esta sala no se ha aprobado. Crea una nueva.'
+            : room.review_status === 'failed'
+              ? 'No se han podido generar las preguntas. Crea la sala de nuevo.'
+              : 'Las preguntas están en revisión. Cuando el webmaster las apruebe, aquí aparecerá el enlace para tus amigos.'}</p>
+        )}
+        {room.status === 'lobby' && room.review_status === 'approved' && (
           <>
-            <p>Código de la sala:</p>
-            <div className="code">{room.code}</div>
-            <p>Jugadores ({players.length}/8):</p>
-            <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
-            <button disabled={!players.length} onClick={() => call('next_question')}>Empezar partida</button>
+            <p>Envía este enlace a tus amigos por WhatsApp:</p>
+            <input readOnly value={link} onFocus={(e) => e.target.select()} />
+            <p><button onClick={() => { navigator.clipboard.writeText(link); setCopied(true) }}>{copied ? '¡Copiado!' : 'Copiar enlace'}</button></p>
+            <p>Participantes ({slots.length - missing}/{slots.length} dentro):</p>
+            <ul className="list">
+              {slots.map((s) => <li key={s.id}>{s.user_id ? '✅' : '⏳'} {s.name}</li>)}
+            </ul>
+            <button disabled={missing > 0 || !slots.length} onClick={() => call('start_game')}>
+              {missing > 0 ? `Esperando a ${missing}…` : 'Empezar partida'}
+            </button>
           </>
         )}
         {room.status === 'question' && cur && (
@@ -143,17 +222,12 @@ export function Host({ room: first, exit }) {
         {room.status === 'reveal' && cur && (
           <>
             <Options q={cur} ok={ok} />
-            <h3>Ranking</h3>
-            <Ranking players={players} />
-            <button onClick={() => call('next_question')}>{last ? 'Ver resultado final' : 'Siguiente pregunta'}</button>
+            <h3>Así ha ido</h3>
+            <Reveal players={players} answers={answers} qid={cur.id} />
+            <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && (
-          <>
-            <h2>🏆 ¡Fin de la partida!</h2>
-            <Ranking players={players} />
-          </>
-        )}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={null} />}
       </div>
     </>
   )
@@ -164,8 +238,11 @@ export function Play({ roomId, user, exit }) {
   const cur = useQuestion(room)
   const ok = useCorrect(room)
   const left = useLeft(room)
+  const answers = useRoomAnswers(room)
   const [picked, setPicked] = useState(null)
   useEffect(() => { setPicked(null) }, [room?.current_order])
+
+  useGameTimers(room, left, null, players.length)
 
   async function pick(i) {
     setPicked(i)
@@ -181,7 +258,7 @@ export function Play({ roomId, user, exit }) {
         {room.status === 'lobby' && (
           <>
             <h2>Sala {room.code}</h2>
-            <p>Esperando a que el anfitrión empiece…</p>
+            <p>Esperando a que entren todos…</p>
             <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
           </>
         )}
@@ -195,39 +272,74 @@ export function Play({ roomId, user, exit }) {
           <>
             <h2>{picked == null ? '⏰ No respondiste' : picked === ok ? '✅ ¡Correcto!' : '❌ Fallaste'}</h2>
             <Options q={cur} ok={ok} picked={picked} />
-            <h3>Ranking</h3>
-            <Ranking players={players} me={user.id} />
-            <p>Esperando la siguiente pregunta…</p>
+            <h3>Así ha ido</h3>
+            <Reveal players={players} answers={answers} qid={cur.id} />
+            <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && (
-          <>
-            <h2>🏆 ¡Fin de la partida!</h2>
-            <Ranking players={players} me={user.id} />
-          </>
-        )}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={user.id} />}
       </div>
     </>
   )
 }
 
-export function Join({ go }) {
-  const [code, setCode] = useState('')
-  const [nick, setNick] = useState('')
-  async function join(e) {
-    e.preventDefault()
-    const { data, error } = await supabase.rpc('join_room', { p_code: code, p_nickname: nick })
-    if (error) return alert(error.message)
-    go({ play: data })
+// Entrada por enlace: sesion anonima, elegir nombre de la lista y jugar
+export function Link({ token }) {
+  const [me, setMe] = useState(null)
+  const [info, setInfo] = useState(undefined) // undefined = cargando, null = enlace caducado
+  const [roomId, setRoomId] = useState(null)
+  const [error, setError] = useState('')
+
+  async function load() {
+    const { data, error } = await supabase.rpc('room_by_token', { p_token: token })
+    if (error) return setError(error.message)
+    setInfo(data)
+    if (data?.slots.some((s) => s.mine)) setRoomId(data.id)
   }
+
+  useEffect(() => {
+    (async () => {
+      const { data: s } = await supabase.auth.getSession()
+      let user = s.session?.user
+      if (!user) {
+        const { data, error } = await supabase.auth.signInAnonymously()
+        if (error) return setError('No se pudo entrar a la sala: ' + error.message)
+        user = data.user
+      }
+      setMe(user)
+      load()
+    })()
+  }, [token])
+
+  async function claim(slot) {
+    setError('')
+    const { data, error } = await supabase.rpc('claim_slot', { p_token: token, p_slot_id: slot.id })
+    if (error) return setError(error.message)
+    setRoomId(data)
+    load()
+  }
+
+  if (error) return <div className="card"><p className="msg">{error}</p></div>
+  if (!me || info === undefined) return <p className="center">Cargando…</p>
+  if (info === null) return <div className="card"><h2>Este enlace ya no está activo</h2><p>La partida ha terminado o el enlace ha caducado.</p></div>
+  if (roomId) return <Play roomId={roomId} user={me} exit={() => { window.location.href = '/' }} />
+  if (info.status !== 'lobby') return <div className="card"><p>La partida ya ha empezado. Pide un enlace nuevo al game master si te has quedado fuera.</p></div>
+
   return (
     <div className="card">
-      <h2>Unirme a una sala</h2>
-      <form onSubmit={join}>
-        <input placeholder="Código de sala" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={5} required />
-        <input placeholder="Tu apodo" value={nick} onChange={(e) => setNick(e.target.value)} maxLength={20} required />
-        <button>Entrar</button>
-      </form>
+      <h2>¿Quién eres?</h2>
+      <p>Pulsa tu nombre de la lista.</p>
+      <ul className="list">
+        {info.slots.map((s) => (
+          <li key={s.id} className="row">
+            <span style={{ flex: 1 }}>{s.name}</span>
+            {s.taken
+              ? <small>{s.mine ? 'Eres tú' : 'Ya elegido'}</small>
+              : <button onClick={() => claim(s)}>Soy yo</button>}
+          </li>
+        ))}
+      </ul>
+      <p><small>Máximo {MAX_PLAYERS} participantes.</small></p>
     </div>
   )
 }

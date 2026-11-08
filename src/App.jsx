@@ -1,15 +1,27 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Host, Play, Join, Importer } from './Game.jsx'
+import { Host, Play, Link, Importer } from './Game.jsx'
 import { VoiceWizard } from './Voice.jsx'
 import { EventsCard } from './Events.jsx'
 import { Invite } from './Invite.jsx'
+import { Home } from './Rooms.jsx'
 
 const COLORS = ['c-red', 'c-blue', 'c-yellow', 'c-green']
 const BUCKET = 'question-images'
 
-function Auth() {
-  const [mode, setMode] = useState('login')
+function Landing({ onPick }) {
+  return (
+    <div className="card" style={{ textAlign: 'center' }}>
+      <h2>Crea tu trivial con tu grupo</h2>
+      <p>Cuenta lo que sabéis de vuestro grupo y nosotros preparamos el juego. Tú invitas a tus amigos por WhatsApp.</p>
+      <p><button onClick={() => onPick('login')}>INICIAR SESIÓN</button></p>
+      <p><button className="ghost dark" onClick={() => onPick('register')}>CREAR CUENTA</button></p>
+    </div>
+  )
+}
+
+function Auth({ initial = 'login', back }) {
+  const [mode, setMode] = useState(initial)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -47,6 +59,7 @@ function Auth() {
           {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
         </a>
       </p>
+      {back && <p><a href="#" onClick={(e) => { e.preventDefault(); back() }}>← Volver</a></p>}
     </div>
   )
 }
@@ -141,9 +154,11 @@ function Editor({ pack, user, back }) {
 }
 
 function Packs({ user, go }) {
-  const [secs, setSecs] = useState(20)
+  const [length, setLength] = useState(15)
+  const [names, setNames] = useState('')
   async function host(p) {
-    const { data, error } = await supabase.rpc('create_room', { p_pack_id: p.id, p_seconds: Number(secs) })
+    const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
+    const { data, error } = await supabase.rpc('create_room_v2', { p_pack_id: p.id, p_length: Number(length), p_names: list })
     if (error) return alert(error.message)
     go({ host: data })
   }
@@ -169,11 +184,20 @@ function Packs({ user, go }) {
   if (open) return <Editor pack={open} user={user} back={() => setOpen(null)} />
   return (
     <>
-      <Join go={go} />
       <EventsCard onPackCreated={load} />
       <div className="card">
+        <h2>Partida de prueba (paquetes a mano)</h2>
+        <p>Participantes (2 a 8, uno por línea o separados por comas):</p>
+        <textarea rows={4} style={{ width: '100%' }} value={names} onChange={(e) => setNames(e.target.value)} placeholder={'Isa\nMarta\nCarlos'} />
+        <p>Duración: <select value={length} onChange={(e) => setLength(e.target.value)} style={{ width: 200 }}>
+          <option value={15}>Rápida (15 preguntas)</option>
+          <option value={30}>Media (30 preguntas)</option>
+          <option value={50}>Larga (50 preguntas)</option>
+        </select></p>
+      </div>
+      <div className="card">
         <h2>Mis paquetes de preguntas</h2>
-        <p>Segundos por pregunta: <select value={secs} onChange={(e) => setSecs(e.target.value)} style={{ width: 90 }}>{[10, 15, 20, 30, 45, 60].map((n) => <option key={n}>{n}</option>)}</select></p>
+        <p><small>Pulsa «▶ Crear sala» en el paquete que quieras jugar.</small></p>
         <ul className="list">
           {packs.map((p) => <li key={p.id} className="row"><span className="pack" style={{ flex: 1 }} onClick={() => setOpen(p)}>📦 {p.title}</span><button onClick={() => host(p)}>▶ Crear sala</button></li>)}
           {!packs.length && <li>Aún no tienes paquetes. ¡Crea el primero!</li>}
@@ -192,14 +216,18 @@ function Packs({ user, go }) {
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [view, setView] = useState(null)
+  const [authMode, setAuthMode] = useState(null) // null = portada; 'login' o 'register'
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  const inviteToken = new URLSearchParams(window.location.search).get('e')
+  const params = new URLSearchParams(window.location.search)
+  const inviteToken = params.get('e')
   if (inviteToken) return <Invite token={inviteToken} />
+  const roomToken = params.get('s')
+  if (roomToken) return <div className="wrap"><header><h1>🎉 Trivial de amigos</h1></header><Link token={roomToken} /></div>
   if (session === undefined) return <p className="center">Cargando…</p>
   return (
     <div className="wrap">
@@ -207,7 +235,12 @@ export default function App() {
         <h1>🎉 Trivial de amigos</h1>
         {session && <button className="ghost" onClick={() => supabase.auth.signOut()}>Salir</button>}
       </header>
-      {session ? (view?.host ? <Host room={view.host} exit={() => setView(null)} /> : view?.play ? <Play roomId={view.play} user={session.user} exit={() => setView(null)} /> : <Packs user={session.user} go={setView} />) : <Auth />}
+      {session?.user?.is_anonymous
+        ? <div className="card"><p>Has salido de la sala. Para volver a jugar, abre el enlace que te pasó el game master.</p></div>
+        : session ? (view?.host
+          ? <Host room={view.host} exit={() => setView(null)} />
+          : <><Home user={session.user} openRoom={(r) => setView({ host: r })} /><Packs user={session.user} go={setView} /></>)
+          : authMode ? <Auth initial={authMode} back={() => setAuthMode(null)} /> : <Landing onPick={setAuthMode} />}
     </div>
   )
 }
