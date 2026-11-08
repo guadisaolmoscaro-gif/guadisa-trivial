@@ -287,6 +287,7 @@ export function Play({ roomId, user, exit }) {
         {room.status === 'reveal' && cur && (
           <>
             <h2>{picked == null ? '⏰ No respondiste' : picked === ok ? '✅ ¡Correcto!' : '❌ Fallaste'}</h2>
+            {ok != null && picked !== ok && <p><b>La respuesta correcta es: {cur.options[ok]}</b></p>}
             <Options q={cur} ok={ok} picked={picked} />
             <h3>Así ha ido</h3>
             <Reveal players={players} answers={answers} qid={cur.id} />
