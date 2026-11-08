@@ -234,7 +234,8 @@ export function Host({ room: first, exit }) {
 }
 
 export function Play({ roomId, user, exit }) {
-  const { room, players } = useRoom(roomId)
+  const { room, players, slots } = useRoom(roomId)
+  const allIn = slots.length > 0 && slots.every((s) => s.user_id)
   const cur = useQuestion(room)
   const ok = useCorrect(room)
   const left = useLeft(room)
@@ -258,8 +259,16 @@ export function Play({ roomId, user, exit }) {
         {room.status === 'lobby' && (
           <>
             <h2>Sala {room.code}</h2>
-            <p>Esperando a que entren todos…</p>
+            {allIn
+              ? <p>¡Ya estáis todos! Pulsa para empezar.</p>
+              : <p>Esperando a que entren todos…</p>}
             <ul className="list">{players.map((p) => <li key={p.user_id}>{p.nickname}</li>)}</ul>
+            {allIn && (
+              <button onClick={async () => {
+                const { error } = await supabase.rpc('start_game', { p_room_id: roomId })
+                if (error) alert(error.message)
+              }}>Continuar</button>
+            )}
           </>
         )}
         {room.status === 'question' && (cur ? (
