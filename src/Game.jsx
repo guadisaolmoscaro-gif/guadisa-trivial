@@ -94,18 +94,18 @@ function useGameTimers(room, left, answered, playersCount) {
     if (!room) return
     const rpc = (fn) => supabase.rpc(fn, { p_room_id: room.id })
     if (room.status === 'question') {
-      // el game master cierra en cuanto han contestado todos; todos cierran al agotarse el tiempo
+      // El servidor decide cuando cerrar (todos han contestado o se acabo el tiempo).
+      // Cada movil lo pide cada segundo, asi no depende de su reloj.
       const allIn = answered != null && playersCount > 0 && answered >= playersCount
-      if (!allIn && left !== 0) return
-      rpc('close_question')
-      const t = setInterval(() => rpc('close_question'), 800)
+      if (allIn) rpc('close_question')
+      const t = setInterval(() => rpc('close_question'), 1000)
       return () => clearInterval(t)
     }
     if (room.status === 'reveal') {
       const t = setInterval(() => rpc('advance_room'), 1000)
       return () => clearInterval(t)
     }
-  }, [room?.status, room?.current_order, left, answered, playersCount])
+  }, [room?.status, room?.current_order, answered, playersCount])
 }
 
 function Options({ q, onPick, picked, ok }) {
