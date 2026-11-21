@@ -138,7 +138,14 @@ function MyRooms({ user, openRoom, refreshKey }) {
     try { await navigator.clipboard.writeText(roomLink(room)); setCopied(room.id); setTimeout(() => setCopied(''), 1500) } catch { window.prompt('Copia el enlace:', roomLink(room)) }
   }
 
-  if (!rooms.length) return <p className="empty">Aún no has creado ninguna sala.</p>
+  async function remove(room) {
+    if (!confirm(`¿Borrar la partida «${room.name || 'sin nombre'}»? Se borran también sus preguntas y sus jugadores.`)) return
+    const { error } = await supabase.rpc('delete_room', { p_room_id: room.id })
+    if (error) return alert(error.message)
+    load()
+  }
+
+  if (!rooms.length) return <p className="empty">Aún no has creado ninguna partida.</p>
   return (
     <div className="rooms">
       {rooms.map((r) => {
@@ -146,16 +153,19 @@ function MyRooms({ user, openRoom, refreshKey }) {
         return (
           <div key={r.id} className={`room ${st.tone}`}>
             <div className="room-head">
-              <b>{r.name || 'Sala'}</b>
+              <b className="room-name">{r.name || 'Partida sin nombre'}</b>
               <span className={`chip ${st.tone}`}>{st.label}</span>
             </div>
             <small>{r.total_questions} preguntas · {r.status === 'lobby' ? 'esperando jugadores' : r.status === 'finished' ? 'terminada' : 'en juego'}</small>
-            {r.review_status === 'approved' && (
-              <p className="row">
-                <button onClick={() => copy(r)}>{copied === r.id ? '✔ Enlace copiado' : '📋 Copiar enlace'}</button>
-                <button className="ghost dark" onClick={() => openRoom(r)}>Ver sala</button>
-              </p>
-            )}
+            <p className="row">
+              {r.review_status === 'approved' && (
+                <>
+                  <button onClick={() => copy(r)}>{copied === r.id ? '✔ Enlace copiado' : '📋 Copiar enlace'}</button>
+                  <button className="ghost dark" onClick={() => openRoom(r)}>Ver partida</button>
+                </>
+              )}
+              <button className="ghost dark" onClick={() => remove(r)}>🗑 Borrar</button>
+            </p>
           </div>
         )
       })}
@@ -190,9 +200,12 @@ export function Review() {
     load()
   }
 
-  if (!rooms.length) return <p className="empty">No hay salas esperando revisión.</p>
+  if (!rooms.length) return <p className="empty">No hay partidas esperando revisión.</p>
   return (
     <>
+      <div className="card">
+        <p><b>¿Qué es esto?</b> Cuando alguien crea una partida, la IA escribe las preguntas y sus respuestas a partir del texto del grupo. Aquí las revisas antes de que se pueda jugar: quitas las que no tengan sentido o tengan una respuesta equivocada, y luego pulsas <b>Aprobar</b>. Si la partida no vale, pulsa <b>Rechazar</b>.</p>
+      </div>
       {rooms.map((room) => {
         const left = room.questions.filter((q) => !removed[room.id]?.[q.id]).length
         return (
@@ -231,8 +244,8 @@ export function SalasTab({ user, openRoom }) {
         ? <NewRoomWizard onDone={() => { setCreating(false); setRefreshKey((k) => k + 1) }} onCancel={() => setCreating(false)} />
         : (
           <div className="card hero">
-            <h2>Tus salas</h2>
-            <button onClick={() => setCreating(true)}>＋ Nueva sala</button>
+            <h2>Tus partidas</h2>
+            <button onClick={() => setCreating(true)}>＋ Nueva partida</button>
           </div>
         )}
       <MyRooms user={user} openRoom={openRoom} refreshKey={refreshKey} />

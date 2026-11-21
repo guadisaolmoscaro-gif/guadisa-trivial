@@ -231,6 +231,13 @@ export function PacksTab({ user }) {
     load()
   }
 
+  async function removePack(p) {
+    if (!confirm(`¿Borrar el paquete «${p.title}» y todas sus preguntas?`)) return
+    const { error } = await supabase.from('packs').delete().eq('id', p.id)
+    if (error) return alert(error.message)
+    load()
+  }
+
   if (open) return <Editor pack={open} user={user} back={() => { setOpen(null); load() }} />
   return (
     <>
@@ -244,6 +251,7 @@ export function PacksTab({ user }) {
                 📦 {p.title} <small>· {p.questions?.[0]?.count ?? 0} preguntas</small>
               </span>
               <button className="ghost dark" onClick={() => setOpen(p)}>Editar</button>
+              <button className="ghost dark" onClick={() => removePack(p)} title="Borrar paquete">🗑</button>
             </li>
           ))}
           {!packs.length && <li>Aún no tienes paquetes.</li>}

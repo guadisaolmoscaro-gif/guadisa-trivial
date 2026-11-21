@@ -86,7 +86,7 @@ export default function App() {
   if (roomToken) return <div className="wrap"><header><h1>🎉 Trivial de amigos</h1></header><Link token={roomToken} /></div>
   if (session === undefined) return <p className="center">Cargando…</p>
 
-  const tabs = [['salas', '🎲 Salas'], ['paquetes', '📦 Paquetes'], ...(wm ? [['revision', '🔎 Revisión']] : [])]
+  const tabs = [['salas', '🎲 Partidas'], ['paquetes', '📦 Paquetes'], ...(wm ? [['revision', '🔎 Revisar partidas']] : [])]
 
   return (
     <div className="wrap">
