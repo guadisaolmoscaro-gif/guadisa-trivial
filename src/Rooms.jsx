@@ -10,6 +10,7 @@ export const GAMES = {
   vaca: { name: '🐄 La Vaca', text: 'Todos responden lo que creen que elegirá la mayoría. Preguntas de cultura, memes y música.' },
   empatia: { name: '🧠 Empatía', text: 'No gana nadie. ¿Quién es más quejica, más valiente…? Para conoceros mejor.' },
   amor: { name: '💘 Compatibilidad amorosa', text: 'Preguntas para medir vuestra compatibilidad. Sin ganador: al final, una barra de compatibilidad por pareja 🔥' },
+  isla: { name: '🏝️ La Isla', text: 'Preguntas sobre La isla de las tentaciones: parejas, cuernos y la última edición. Gana quien más acierte y más rápido.' },
 }
 
 const STATE = {
@@ -34,7 +35,7 @@ function NewRoomWizard({ onDone, onCancel }) {
   const [err, setErr] = useState('')
 
   const flow = game === 'trivial' ? ['tipo', 'datos', 'duracion', 'contexto', 'resumen'] : ['tipo', 'datos', 'duracion', 'resumen']
-  const maxQuestions = game === 'amor' ? 20 : game === 'empatia' ? 40 : 50
+  const maxQuestions = game === 'amor' || game === 'isla' ? 20 : game === 'empatia' ? 40 : 50
   const current = flow[step]
   const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
   const uniq = new Set(list.map((n) => n.toLowerCase())).size
@@ -64,12 +65,14 @@ function NewRoomWizard({ onDone, onCancel }) {
     setErr('')
     const { data: id, error } = game === 'amor'
       ? await supabase.rpc('create_amor_room', { p_name: name.trim(), p_length: Number(length), p_names: list })
-      : await supabase.rpc('create_game_room', {
+      : game === 'isla'
+        ? await supabase.rpc('create_isla_room', { p_name: name.trim(), p_length: Number(length), p_names: list })
+        : await supabase.rpc('create_game_room', {
           p_name: name.trim(), p_game: game, p_length: Number(length), p_names: list,
           p_context: game === 'trivial' ? context.trim() : null,
         })
     if (error) { setBusy(false); return setErr(error.message) }
-    if (game !== 'empatia' && game !== 'amor') {
+    if (game !== 'empatia' && game !== 'amor' && game !== 'isla') {
       const { error: e2 } = await supabase.functions.invoke('generate-room', { body: { room_id: id } })
       if (e2) { setBusy(false); return setErr('La partida está creada, pero no se han podido empezar las preguntas: ' + e2.message) }
     }
@@ -196,7 +199,7 @@ function MyRooms({ user, openRoom, refreshKey }) {
               <b className="room-name">{r.name || 'Partida sin nombre'}</b>
               <span className={`chip ${st.tone}`}>{st.label}</span>
             </div>
-            <small>{GAMES[r.game_type]?.name || GAMES.trivial.name} · {r.total_questions} preguntas · {r.status === 'lobby' ? 'esperando jugadores' : r.status === 'finished' ? 'terminada' : 'en juego'}</small>
+            <small>{GAMES[r.theme] ? GAMES[r.theme].name : (GAMES[r.game_type]?.name || GAMES.trivial.name)} · {r.total_questions} preguntas · {r.status === 'lobby' ? 'esperando jugadores' : r.status === 'finished' ? 'terminada' : 'en juego'}</small>
             <p className="row">
               {r.review_status === 'approved' && (
                 <>
