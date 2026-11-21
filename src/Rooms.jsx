@@ -9,6 +9,7 @@ export const GAMES = {
   trivial: { name: '🎲 Trivial Amigos', text: 'Preguntas con una respuesta correcta sobre vuestro grupo. Lo escribes tú y la IA prepara las preguntas.' },
   vaca: { name: '🐄 La Vaca', text: 'Todos responden lo que creen que elegirá la mayoría. Preguntas de cultura, memes y música.' },
   empatia: { name: '🧠 Empatía', text: 'No gana nadie. ¿Quién es más quejica, más valiente…? Para conoceros mejor.' },
+  amor: { name: '💘 Compatibilidad amorosa', text: 'Preguntas para medir vuestra compatibilidad. Sin ganador: al final, una barra de compatibilidad por pareja 🔥' },
 }
 
 const STATE = {
@@ -33,6 +34,7 @@ function NewRoomWizard({ onDone, onCancel }) {
   const [err, setErr] = useState('')
 
   const flow = game === 'trivial' ? ['tipo', 'datos', 'duracion', 'contexto', 'resumen'] : ['tipo', 'datos', 'duracion', 'resumen']
+  const maxQuestions = game === 'amor' ? 20 : game === 'empatia' ? 40 : 50
   const current = flow[step]
   const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
   const uniq = new Set(list.map((n) => n.toLowerCase())).size
@@ -60,12 +62,14 @@ function NewRoomWizard({ onDone, onCancel }) {
   async function create() {
     setBusy(true)
     setErr('')
-    const { data: id, error } = await supabase.rpc('create_game_room', {
-      p_name: name.trim(), p_game: game, p_length: Number(length), p_names: list,
-      p_context: game === 'trivial' ? context.trim() : null,
-    })
+    const { data: id, error } = game === 'amor'
+      ? await supabase.rpc('create_amor_room', { p_name: name.trim(), p_length: Number(length), p_names: list })
+      : await supabase.rpc('create_game_room', {
+          p_name: name.trim(), p_game: game, p_length: Number(length), p_names: list,
+          p_context: game === 'trivial' ? context.trim() : null,
+        })
     if (error) { setBusy(false); return setErr(error.message) }
-    if (game !== 'empatia') {
+    if (game !== 'empatia' && game !== 'amor') {
       const { error: e2 } = await supabase.functions.invoke('generate-room', { body: { room_id: id } })
       if (e2) { setBusy(false); return setErr('La partida está creada, pero no se han podido empezar las preguntas: ' + e2.message) }
     }
@@ -113,7 +117,7 @@ function NewRoomWizard({ onDone, onCancel }) {
               </button>
             ))}
           </div>
-          {game === 'empatia' && <p><small>En Empatía hay una pregunta por plantilla. Si pides más de las que hay, se usan todas las disponibles.</small></p>}
+          {(game === 'empatia' || game === 'amor') && <p><small>Hay {maxQuestions} preguntas preparadas. Si pides más, se usan todas.</small></p>}
         </>
       )}
 
@@ -139,6 +143,7 @@ function NewRoomWizard({ onDone, onCancel }) {
             {game === 'trivial' && 'Las preguntas se preparan en 1-3 minutos. Después las revisa el webmaster y, cuando estén listas, te aparece el enlace para WhatsApp.'}
             {game === 'vaca' && 'La IA prepara las preguntas en 1-3 minutos. Después las revisa el webmaster y te aparece el enlace.'}
             {game === 'empatia' && 'Está lista en un momento: no hace falta revisión. Ya puedes copiar el enlace.'}
+            {game === 'amor' && 'Está lista en un momento. Nadie ve las respuestas hasta el final.'}
           </small></p>
         </>
       )}

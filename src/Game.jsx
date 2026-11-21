@@ -72,6 +72,17 @@ function useRoomAnswers(room) {
   return answers
 }
 
+// Todas las preguntas de la partida: solo se piden al final, para el resumen
+function useAllQuestions(room) {
+  const [qs, setQs] = useState([])
+  useEffect(() => {
+    if (!room || room.status !== 'finished') return
+    supabase.from('questions').select('id, sort_order, prompt, options').eq('pack_id', room.pack_id).order('sort_order')
+      .then(({ data }) => setQs(data || []))
+  }, [room?.id, room?.status])
+  return qs
+}
+
 // Host: cuantos han contestado a la pregunta actual (solo el game master ve todas las respuestas)
 function useAnsweredCount(room, cur) {
   const [answered, setAnswered] = useState(0)
@@ -163,7 +174,7 @@ function RevealEmpatia({ players, answers, qid, options }) {
 // Lo que ve todo el mundo al final de cada pregunta: quien acerto, fallo o se quedo sin tiempo
 function Reveal({ players, answers, qid, game, options }) {
   if (game === 'vaca') return <RevealVaca players={players} answers={answers} qid={qid} options={options} />
-  if (game === 'empatia') return <RevealEmpatia players={players} answers={answers} qid={qid} options={options} />
+  if (game === 'empatia' || game === 'amor') return <Waiting players={players} answers={answers} qid={qid} />
   const mine = answers.filter((a) => a.question_id === qid)
   const hits = mine.filter((a) => a.is_correct).sort((a, b) => a.response_ms - b.response_ms)
   const rows = players.map((p) => {
@@ -186,7 +197,7 @@ function Reveal({ players, answers, qid, game, options }) {
 
 // Resumen final: ganador por puntos; en empate, el que menos tiempo sumó en sus aciertos
 // Empatia: no hay ganador; cada uno ve cuantas veces coincidio con la mayoria
-function SummaryEmpatia({ players, answers, me, total }) {
+function SummaryEmpatia({ players, answers, me, total, questions }) {
   const majority = {}
   for (const qid of new Set(answers.map((a) => a.question_id))) {
     const counts = {}
@@ -201,7 +212,8 @@ function SummaryEmpatia({ players, answers, me, total }) {
   return (
     <>
       <h2>🧠 Fin de la partida</h2>
-      <p>No hay ganador: esto era para conoceros mejor. Así de bien os conocéis:</p>
+      <p>No hay ganador: esto era para conoceros mejor.</p>
+      <h3>Así de bien os conocéis</h3>
       <ul className="list">
         {rows.map((r) => (
           <li key={r.user_id} style={{ fontWeight: r.user_id === me ? 800 : 400 }}>
@@ -209,12 +221,124 @@ function SummaryEmpatia({ players, answers, me, total }) {
           </li>
         ))}
       </ul>
+      <h3>Lo que habéis votado</h3>
+      <ol className="list">
+        {questions.map((q) => {
+          const mine = answers.filter((a) => a.question_id === q.id)
+          const votes = q.options.map((o, i) => ({ name: o, n: mine.filter((a) => a.chosen_index === i).length }))
+          const top = Math.max(0, ...votes.map((v) => v.n))
+          return (
+            <li key={q.id}>
+              <b>{q.prompt}</b><br />
+              <small>{votes.map((v) => `${v.name} ${v.n}${v.n === top && top > 0 ? ' ⭐' : ''}`).join(' · ')}</small>
+            </li>
+          )
+        })}
+      </ol>
     </>
   )
 }
 
-function Summary({ players, answers, me, game, total }) {
-  if (game === 'empatia') return <SummaryEmpatia players={players} answers={answers} me={me} total={total} />
+// Empatia y Compatibilidad: durante la partida no se ve lo que contestan, solo quien ya ha contestado
+function Waiting({ players, answers, qid }) {
+  const mine = answers.filter((a) => a.question_id === qid)
+  return (
+    <>
+      <p><small>Respuesta guardada. Lo que contestáis sale al final de la partida.</small></p>
+      <ul className="list">
+        {players.map((p) => <li key={p.user_id}>{mine.some((a) => a.user_id === p.user_id) ? '✔' : '⏳'} {p.nickname}</li>)}
+      </ul>
+    </>
+  )
+}
+
+// Signos del zodiaco y su elemento: 0 fuego, 1 tierra, 2 aire, 3 agua
+const SIGNS = ['Aries', 'Tauro', 'Géminis', 'Cáncer', 'Leo', 'Virgo', 'Libra', 'Escorpio', 'Sagitario', 'Capricornio', 'Acuario', 'Piscis']
+const ELEMENT = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+
+// Puntuacion 0-100 de dos signos segun la regla clasica de elementos (no hay una tabla unica en internet)
+function zodiacScore(i, j) {
+  if (i === j) return 85
+  const a = ELEMENT[i]
+  const b = ELEMENT[j]
+  if (a === b) return 90
+  const sum = a + b
+  if (sum === 2 || sum === 4) return 75 // fuego-aire o tierra-agua: se llevan bien
+  if (sum === 1 || sum === 5) return 45 // fuego-tierra o aire-agua: neutros
+  return 30 // fuego-agua o aire-tierra: opuestos
+}
+
+// Compatibilidad amorosa: texto según el porcentaje
+const verdict = (p) => p >= 80 ? '💍 ¡Ya tenéis hasta el nombre de los hijos!'
+  : p >= 60 ? '💕 Muy buena química. Peligro de cita doble.'
+  : p >= 40 ? '😉 Hay chispa. Hay que cuidarla.'
+  : p >= 20 ? '🤝 Mejor como amigos… de momento.'
+  : '🧊 Ni la quedada os salvaría.'
+
+// Compatibilidad amorosa: respuestas de cada uno y una barra por pareja
+function SummaryAmor({ players, answers, questions }) {
+  // La pregunta de signo es la primera (sort_order 0): con ella se calcula la parte de signos
+  const signQ = questions.find((q) => q.sort_order === 0 && q.options.length === 12)
+  const restQ = questions.filter((q) => q !== signQ)
+  const pick = (uid, qid) => answers.find((x) => x.user_id === uid && x.question_id === qid)?.chosen_index ?? null
+  const byPlayer = players.map((p) => ({
+    p,
+    sign: signQ ? pick(p.user_id, signQ.id) : null,
+    picks: restQ.map((q) => pick(p.user_id, q.id)),
+  }))
+  const pairs = []
+  for (let i = 0; i < byPlayer.length; i++) {
+    for (let j = i + 1; j < byPlayer.length; j++) {
+      let common = 0
+      let same = 0
+      byPlayer[i].picks.forEach((x, k) => {
+        const y = byPlayer[j].picks[k]
+        if (x !== null && y !== null) { common++; if (x === y) same++ }
+      })
+      const answersPct = common ? (same / common) * 100 : 0
+      const si = byPlayer[i].sign
+      const sj = byPlayer[j].sign
+      const hasSigns = si !== null && sj !== null
+      const signsPct = hasSigns ? zodiacScore(si, sj) : null
+      const pct = Math.round(hasSigns ? answersPct * 0.5 + signsPct * 0.5 : answersPct)
+      pairs.push({
+        a: byPlayer[i].p.nickname,
+        b: byPlayer[j].p.nickname,
+        pct,
+        signs: hasSigns ? `${SIGNS[si]} y ${SIGNS[sj]}` : null,
+      })
+    }
+  }
+  pairs.sort((x, y) => y.pct - x.pct)
+  return (
+    <>
+      <h2>💘 Compatibilidad</h2>
+      {pairs.map((pr) => {
+        const f = Math.round(pr.pct / 10)
+        return (
+          <div key={pr.a + pr.b} className="compat">
+            <b>{pr.a} y {pr.b}</b>
+            <div className="bar-fire">{'█'.repeat(f)}{'░'.repeat(10 - f)} {pr.pct}% 🔥</div>
+            <small>{pr.signs ? `${pr.signs} · ` : ''}{verdict(pr.pct)}</small>
+          </div>
+        )
+      })}
+      <h3>Las respuestas de cada uno</h3>
+      {byPlayer.map(({ p, sign, picks }) => (
+        <details key={p.user_id} className="card-in">
+          <summary><b>{p.nickname}</b>{sign !== null ? ` · ${SIGNS[sign]}` : ''}</summary>
+          <ol>
+            {restQ.map((q, k) => <li key={q.id}>{q.prompt} <b>→ {picks[k] !== null ? q.options[picks[k]] : '—'}</b></li>)}
+          </ol>
+        </details>
+      ))}
+    </>
+  )
+}
+
+function Summary({ players, answers, me, game, total, questions }) {
+  if (game === 'empatia') return <SummaryEmpatia players={players} answers={answers} me={me} total={total} questions={questions} />
+  if (game === 'amor') return <SummaryAmor players={players} answers={answers} questions={questions} />
   const vaca = game === 'vaca'
   const rows = players.map((p) => {
     const hits = answers.filter((a) => a.user_id === p.user_id && a.is_correct)
@@ -241,6 +365,7 @@ export function Host({ room: first, exit }) {
   const ok = useCorrect(room)
   const left = useLeft(room)
   const answers = useRoomAnswers(room)
+  const allQs = useAllQuestions(room)
   const answered = useAnsweredCount(room, cur)
   const busy = useRef(false)
   const [copied, setCopied] = useState(false)
@@ -304,7 +429,7 @@ export function Host({ room: first, exit }) {
             <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && <Summary players={players} answers={answers} me={null} game={room.game_type} total={room.total_questions} />}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={null} game={room.game_type} total={room.total_questions} questions={allQs} />}
       </div>
     </>
   )
@@ -317,6 +442,7 @@ export function Play({ roomId, user, exit }) {
   const ok = useCorrect(room)
   const left = useLeft(room)
   const answers = useRoomAnswers(room)
+  const allQs = useAllQuestions(room)
   const [picked, setPicked] = useState(null)
   useEffect(() => { setPicked(null) }, [room?.current_order])
 
@@ -367,7 +493,7 @@ export function Play({ roomId, user, exit }) {
             <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && <Summary players={players} answers={answers} me={user.id} game={room.game_type} total={room.total_questions} />}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={user.id} game={room.game_type} total={room.total_questions} questions={allQs} />}
       </div>
     </>
   )

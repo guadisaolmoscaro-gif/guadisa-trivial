@@ -72,3 +72,8 @@ button.tic.on { background: #26890c; color: #fff; box-shadow: 0 3px 0 rgba(0,0,0
 .game { background: #f3f0fb; color: #46178f; box-shadow: none; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 3px solid transparent; }
 .game span { font-weight: 400; font-size: 14px; color: #555; }
 .game.on { border-color: #46178f; background: #e8defc; }
+
+/* Compatibilidad amorosa */
+.compat { background: #fff5f7; border-radius: 12px; padding: 12px; margin: 10px 0; }
+.bar-fire { font-family: monospace; font-size: 18px; color: #e21b3c; margin: 6px 0; letter-spacing: 1px; }
+.card-in { background: #f7f5fb; border-radius: 12px; padding: 10px 14px; margin: 8px 0; }
