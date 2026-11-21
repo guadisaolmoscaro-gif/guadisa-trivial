@@ -105,7 +105,7 @@ export default function App() {
                 ))}
               </nav>
               {tab === 'salas' && <SalasTab user={session.user} openRoom={(r) => setView({ host: r })} />}
-              {tab === 'paquetes' && <PacksTab user={session.user} />}
+              {tab === 'paquetes' && <PacksTab user={session.user} openRoom={(r) => setView({ host: r })} />}
               {tab === 'revision' && wm && <Review />}
             </>)
           : authMode ? <Auth initial={authMode} back={() => setAuthMode(null)} /> : <Landing onPick={setAuthMode} />}

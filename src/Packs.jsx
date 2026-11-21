@@ -210,11 +210,44 @@ function Editor({ pack, user, back }) {
   )
 }
 
+// Jugar un paquete: nombres y duración, y se crea la partida lista para el enlace
+function PlayForm({ pack, openRoom }) {
+  const [names, setNames] = useState('')
+  const [length, setLength] = useState(15)
+  const [busy, setBusy] = useState(false)
+
+  async function go() {
+    const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
+    if (list.length < 2) return alert('Escribe al menos 2 participantes')
+    setBusy(true)
+    const { data, error } = await supabase.rpc('create_room_v2', { p_pack_id: pack.id, p_length: Number(length), p_names: list })
+    setBusy(false)
+    if (error) return alert(error.message)
+    openRoom(data)
+  }
+
+  return (
+    <div className="card play">
+      <p><b>¿Quién juega?</b> <small>Uno por línea o separados por comas (de 2 a 8)</small></p>
+      <textarea rows={4} style={{ width: '100%' }} value={names} onChange={(e) => setNames(e.target.value)} placeholder={'Ana\nLuis\nMarta'} />
+      <p className="row">
+        <select value={length} onChange={(e) => setLength(e.target.value)} style={{ width: 'auto' }}>
+          <option value={15}>Rápida (15)</option>
+          <option value={30}>Media (30)</option>
+          <option value={50}>Larga (50)</option>
+        </select>
+        <button disabled={busy} onClick={go}>{busy ? 'Creando…' : 'Crear partida'}</button>
+      </p>
+    </div>
+  )
+}
+
 // Lista de paquetes: se quedan guardados para siempre
-export function PacksTab({ user }) {
+export function PacksTab({ user, openRoom }) {
   const [packs, setPacks] = useState([])
   const [title, setTitle] = useState('')
   const [open, setOpen] = useState(null)
+  const [playing, setPlaying] = useState(null)
 
   const load = async () => {
     const { data } = await supabase.from('packs').select('*, questions(count)').eq('owner_id', user.id).not('title', 'like', 'Sala:%').order('created_at', { ascending: false })
@@ -246,12 +279,16 @@ export function PacksTab({ user }) {
         <p><small>Los paquetes se guardan y puedes reutilizarlos cuando quieras.</small></p>
         <ul className="list">
           {packs.map((p) => (
-            <li key={p.id} className="row">
-              <span className="pack" style={{ flex: 1 }} onClick={() => setOpen(p)}>
-                📦 {p.title} <small>· {p.questions?.[0]?.count ?? 0} preguntas</small>
-              </span>
-              <button className="ghost dark" onClick={() => setOpen(p)}>Editar</button>
-              <button className="ghost dark" onClick={() => removePack(p)} title="Borrar paquete">🗑</button>
+            <li key={p.id}>
+              <div className="row">
+                <span className="pack" style={{ flex: 1 }} onClick={() => setOpen(p)}>
+                  📦 {p.title} <small>· {p.questions?.[0]?.count ?? 0} preguntas</small>
+                </span>
+                <button onClick={() => setPlaying(playing === p.id ? null : p.id)}>▶ Jugar</button>
+                <button className="ghost dark" onClick={() => setOpen(p)}>Editar</button>
+                <button className="ghost dark" onClick={() => removePack(p)} title="Borrar paquete">🗑</button>
+              </div>
+              {playing === p.id && <PlayForm pack={p} openRoom={openRoom} />}
             </li>
           ))}
           {!packs.length && <li>Aún no tienes paquetes.</li>}

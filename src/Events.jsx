@@ -77,16 +77,18 @@ function EventDetail({ id, back, onPackCreated }) {
   async function createPack() {
     const chosen = facts.filter((f) => use[f.id])
     if (!chosen.length) return alert('Marca al menos una respuesta para usar.')
-    if (members.length < 4) return alert('Hacen falta al menos 4 personas.')
+    if (members.length < 2) return alert('Hacen falta al menos 2 personas.')
     setBusy(true)
     const { data: pack, error: e0 } = await supabase.from('packs').insert({ title: ev.title.slice(0, 80) }).select().single()
     if (e0) { setBusy(false); return alert(e0.message) }
 
+    // 4 respuestas si hay suficientes amigos; si no, verdadero/falso con 2 nombres
+    const size = members.length >= 4 ? 4 : 2
     const built = shuffle(chosen).map((f, i) => {
       const subject = members.find((m) => m.id === f.subject_member_id)
-      const opts = shuffle([subject, ...shuffle(members.filter((m) => m.id !== subject.id)).slice(0, 3)])
+      const opts = shuffle([subject, ...shuffle(members.filter((m) => m.id !== subject.id)).slice(0, size - 1)])
       return {
-        row: { pack_id: pack.id, sort_order: i, kind: 'multiple', prompt: TEMPLATES[f.prompt_key](f.text).slice(0, 300), options: opts.map((m) => m.name) },
+        row: { pack_id: pack.id, sort_order: i, kind: size === 4 ? 'multiple' : 'truefalse', prompt: TEMPLATES[f.prompt_key](f.text).slice(0, 300), options: opts.map((m) => m.name) },
         correct: opts.findIndex((m) => m.id === subject.id),
       }
     })
@@ -99,7 +101,7 @@ function EventDetail({ id, back, onPackCreated }) {
 
     setBusy(false)
     onPackCreated?.()
-    alert(`Paquete creado con ${qs.length} preguntas. Vuelve a la pantalla principal y pulsa «▶ Crear sala» junto a «${pack.title}».`)
+    alert(`Paquete creado con ${qs.length} preguntas. Lo encontrarás en Paquetes, con el botón ▶ Jugar.`)
     back()
   }
 
@@ -187,7 +189,7 @@ export function EventsCard({ onPackCreated }) {
   async function create(e) {
     e.preventDefault()
     const list = names.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
-    if (list.length < 4) return alert('Escribe al menos 4 nombres, uno por línea o separados por comas.')
+    if (list.length < 2) return alert('Escribe al menos 2 nombres, uno por línea o separados por comas.')
     setBusy(true)
     const { data, error } = await supabase.rpc('create_event', { p_title: title.trim(), p_date: date || null, p_names: list })
     setBusy(false)
@@ -214,7 +216,7 @@ export function EventsCard({ onPackCreated }) {
         <form onSubmit={create}>
           <input placeholder="Nombre de la quedada (ej. Cena de verano)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <textarea rows={5} style={{ width: '100%' }} placeholder={'Quiénes sois (4 a 12), uno por línea o separados por comas.\nIncluye al anfitrión si va a jugar.'} value={names} onChange={(e) => setNames(e.target.value)} required />
+          <textarea rows={5} style={{ width: '100%' }} placeholder={'Quiénes sois (2 a 12), uno por línea o separados por comas.\nIncluye al anfitrión si va a jugar.'} value={names} onChange={(e) => setNames(e.target.value)} required />
           <p className="row">
             <button disabled={busy}>{busy ? 'Creando…' : 'Crear quedada'}</button>
             <button type="button" className="ghost dark" onClick={() => setCreating(false)}>Cancelar</button>
