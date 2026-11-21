@@ -8,6 +8,7 @@ import { PacksTab } from './Packs.jsx'
 function Landing({ onPick }) {
   return (
     <div className="card" style={{ textAlign: 'center' }}>
+      <img src="/logo.webp" alt="GUADISA Games" style={{ width: 180, maxWidth: '60%' }} />
       <h2>Crea tu trivial con tu grupo</h2>
       <p>Cuenta lo que sabéis de vuestro grupo y nosotros preparamos el juego. Tú invitas a tus amigos por WhatsApp.</p>
       <p><button onClick={() => onPick('login')}>INICIAR SESIÓN</button></p>
@@ -83,7 +84,7 @@ export default function App() {
   const inviteToken = params.get('e')
   if (inviteToken) return <Invite token={inviteToken} />
   const roomToken = params.get('s')
-  if (roomToken) return <div className="wrap"><header><h1>🎉 Trivial de amigos</h1></header><Link token={roomToken} /></div>
+  if (roomToken) return <div className="wrap"><header><img src="/logo.webp" alt="GUADISA Games" style={{ height: 64 }} /></header><Link token={roomToken} /></div>
   if (session === undefined) return <p className="center">Cargando…</p>
 
   const tabs = [['salas', '🎲 Partidas'], ['paquetes', '📦 Paquetes'], ...(wm ? [['revision', '🔎 Revisar partidas']] : [])]
@@ -91,7 +92,7 @@ export default function App() {
   return (
     <div className="wrap">
       <header>
-        <h1>🎉 Trivial de amigos</h1>
+        <img src="/logo.webp" alt="GUADISA Games" style={{ height: 64 }} />
         {session && <button className="ghost" onClick={() => { setView(null); supabase.auth.signOut() }}>Salir</button>}
       </header>
       {session?.user?.is_anonymous
