@@ -35,7 +35,7 @@ function NewRoomWizard({ onDone, onCancel }) {
   const [err, setErr] = useState('')
 
   const flow = game === 'trivial' ? ['tipo', 'datos', 'duracion', 'contexto', 'resumen'] : ['tipo', 'datos', 'duracion', 'resumen']
-  const maxQuestions = game === 'isla' ? 19 : game === 'amor' ? 20 : game === 'empatia' ? 40 : 50
+  const maxQuestions = game === 'isla' ? 26 : game === 'amor' ? 20 : game === 'empatia' ? 40 : 50
   const current = flow[step]
   const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
   const uniq = new Set(list.map((n) => n.toLowerCase())).size
