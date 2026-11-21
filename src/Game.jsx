@@ -43,7 +43,8 @@ function useCorrect(room) {
   const [ok, setOk] = useState(null)
   useEffect(() => {
     setOk(null)
-    if (room && ['reveal', 'finished'].includes(room.status))
+    // Solo Trivial Amigos tiene respuesta correcta; La Vaca y Empatia no
+    if (room && (room.game_type ?? 'trivial') === 'trivial' && ['reveal', 'finished'].includes(room.status))
       supabase.rpc('get_correct_index', { p_room_id: room.id }).then(({ data }) => setOk(data))
   }, [room?.status, room?.current_order])
   return ok
@@ -124,8 +125,45 @@ function Options({ q, onPick, picked, ok }) {
   )
 }
 
+// La Vaca: quien estuvo con la mayoria, empate o minoria
+function RevealVaca({ players, answers, qid, options }) {
+  const mine = answers.filter((a) => a.question_id === qid)
+  return (
+    <ul className="list">
+      {players.map((p) => {
+        const a = mine.find((x) => x.user_id === p.user_id)
+        if (!a) return <li key={p.user_id}>⏱ {p.nickname} · no contestó</li>
+        const eligio = options?.[a.chosen_index] ? ` · eligió «${options[a.chosen_index]}»` : ''
+        if (a.points >= 1) return <li key={p.user_id}>✅ {p.nickname}{eligio} · era la mayoría · +1</li>
+        if (a.points > 0) return <li key={p.user_id}>🤝 {p.nickname}{eligio} · empate · +0,5</li>
+        return <li key={p.user_id}>❌ {p.nickname}{eligio} · era minoría</li>
+      })}
+    </ul>
+  )
+}
+
+// Empatia: cuantos votos ha tenido cada nombre y quien voto a quien
+function RevealEmpatia({ players, answers, qid, options }) {
+  const mine = answers.filter((a) => a.question_id === qid)
+  const votes = options.map((o, i) => ({ name: o, n: mine.filter((a) => a.chosen_index === i).length }))
+  const top = Math.max(0, ...votes.map((v) => v.n))
+  return (
+    <>
+      <p><b>Votos:</b> {votes.map((v) => `${v.name} ${v.n}${v.n === top && top > 0 ? ' ⭐' : ''}`).join(' · ')}</p>
+      <ul className="list">
+        {players.map((p) => {
+          const a = mine.find((x) => x.user_id === p.user_id)
+          return <li key={p.user_id}>{a ? `${p.nickname} votó a ${options[a.chosen_index]}` : `${p.nickname} no votó`}</li>
+        })}
+      </ul>
+    </>
+  )
+}
+
 // Lo que ve todo el mundo al final de cada pregunta: quien acerto, fallo o se quedo sin tiempo
-function Reveal({ players, answers, qid }) {
+function Reveal({ players, answers, qid, game, options }) {
+  if (game === 'vaca') return <RevealVaca players={players} answers={answers} qid={qid} options={options} />
+  if (game === 'empatia') return <RevealEmpatia players={players} answers={answers} qid={qid} options={options} />
   const mine = answers.filter((a) => a.question_id === qid)
   const hits = mine.filter((a) => a.is_correct).sort((a, b) => a.response_ms - b.response_ms)
   const rows = players.map((p) => {
@@ -147,7 +185,37 @@ function Reveal({ players, answers, qid }) {
 }
 
 // Resumen final: ganador por puntos; en empate, el que menos tiempo sumó en sus aciertos
-function Summary({ players, answers, me }) {
+// Empatia: no hay ganador; cada uno ve cuantas veces coincidio con la mayoria
+function SummaryEmpatia({ players, answers, me, total }) {
+  const majority = {}
+  for (const qid of new Set(answers.map((a) => a.question_id))) {
+    const counts = {}
+    answers.filter((a) => a.question_id === qid).forEach((a) => { counts[a.chosen_index] = (counts[a.chosen_index] || 0) + 1 })
+    const top = Math.max(...Object.values(counts))
+    majority[qid] = new Set(Object.keys(counts).filter((k) => counts[k] === top).map(Number))
+  }
+  const rows = players.map((p) => ({
+    ...p,
+    hits: answers.filter((a) => a.user_id === p.user_id && majority[a.question_id]?.has(a.chosen_index)).length,
+  }))
+  return (
+    <>
+      <h2>🧠 Fin de la partida</h2>
+      <p>No hay ganador: esto era para conoceros mejor. Así de bien os conocéis:</p>
+      <ul className="list">
+        {rows.map((r) => (
+          <li key={r.user_id} style={{ fontWeight: r.user_id === me ? 800 : 400 }}>
+            {r.nickname}: coincidiste con la mayoría en {r.hits} de {total}
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+function Summary({ players, answers, me, game, total }) {
+  if (game === 'empatia') return <SummaryEmpatia players={players} answers={answers} me={me} total={total} />
+  const vaca = game === 'vaca'
   const rows = players.map((p) => {
     const hits = answers.filter((a) => a.user_id === p.user_id && a.is_correct)
     return { ...p, hits: hits.length, ms: hits.reduce((s, a) => s + a.response_ms, 0) }
@@ -159,7 +227,7 @@ function Summary({ players, answers, me }) {
       <ol className="list">
         {rows.map((r, i) => (
           <li key={r.user_id} style={{ fontWeight: r.user_id === me ? 800 : 400 }}>
-            {['🥇', '🥈', '🥉'][i] || `${i + 1}.`} {r.nickname} — {r.score} pts · {r.hits} aciertos · {(r.ms / 1000).toFixed(1)} s
+            {['🥇', '🥈', '🥉'][i] || `${i + 1}.`} {r.nickname} — {r.score} pts · {r.hits} {vaca ? 'con la mayoría' : 'aciertos'}{vaca ? '' : ` · ${(r.ms / 1000).toFixed(1)} s`}
           </li>
         ))}
       </ol>
@@ -232,11 +300,11 @@ export function Host({ room: first, exit }) {
           <>
             <Options q={cur} ok={ok} />
             <h3>Así ha ido</h3>
-            <Reveal players={players} answers={answers} qid={cur.id} />
+            <Reveal players={players} answers={answers} qid={cur.id} game={room.game_type} options={cur.options} />
             <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && <Summary players={players} answers={answers} me={null} />}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={null} game={room.game_type} total={room.total_questions} />}
       </div>
     </>
   )
@@ -289,15 +357,17 @@ export function Play({ roomId, user, exit }) {
         ) : <p>Cargando pregunta…</p>)}
         {room.status === 'reveal' && cur && (
           <>
-            <h2>{picked == null ? '⏰ No respondiste' : picked === ok ? '✅ ¡Correcto!' : '❌ Fallaste'}</h2>
+            <h2>{room.game_type !== 'trivial'
+              ? (picked == null ? '⏰ No respondiste' : '✔ Respuesta enviada')
+              : (picked == null ? '⏰ No respondiste' : picked === ok ? '✅ ¡Correcto!' : '❌ Fallaste')}</h2>
             {ok != null && picked !== ok && <p><b>La respuesta correcta es: {cur.options[ok]}</b></p>}
             <Options q={cur} ok={ok} picked={picked} />
             <h3>Así ha ido</h3>
-            <Reveal players={players} answers={answers} qid={cur.id} />
+            <Reveal players={players} answers={answers} qid={cur.id} game={room.game_type} options={cur.options} />
             <p>Siguiente pregunta en unos segundos…</p>
           </>
         )}
-        {room.status === 'finished' && <Summary players={players} answers={answers} me={user.id} />}
+        {room.status === 'finished' && <Summary players={players} answers={answers} me={user.id} game={room.game_type} total={room.total_questions} />}
       </div>
     </>
   )

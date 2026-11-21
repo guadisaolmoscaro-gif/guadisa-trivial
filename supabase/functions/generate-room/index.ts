@@ -30,6 +30,18 @@ Reglas:
 Responde SOLO con un array JSON, sin texto antes ni después ni bloques de código. Cada elemento:
 {"kind":"multiple"|"truefalse","prompt":"...","options":["..."],"correct_index":0}`
 
+// La Vaca: preguntas de opinion general. Gana quien acierte la respuesta mas votada.
+const VACA = `Eres el creador de preguntas para "La Vaca", un juego en el que todos responden lo que creen que elegirá la mayoría.
+
+Reglas:
+- Preguntas de opinión que todo el mundo pueda responder: memes, cultura general, música pop de los 90, 2000 y actualidad, programas de TV y cosas generales (por ejemplo "¿Cuál es el Teletubbie más querido?").
+- NO hagas preguntas sobre el grupo ni sobre personas concretas.
+- Exactamente 4 respuestas, claras y distintas, de máximo 60 caracteres, en español de España.
+- Mezcla temas y no repitas preguntas.
+- Responde SOLO con un array JSON, sin texto antes ni después. Cada elemento:
+{"kind":"multiple","prompt":"...","options":["..."],"correct_index":0}
+(correct_index no se usa en La Vaca: pon siempre 0.)`
+
 type Q = { kind: string; prompt: string; options: string[]; correct_index: number }
 
 function clean(raw: unknown): Q[] {
@@ -50,7 +62,7 @@ function clean(raw: unknown): Q[] {
   return out
 }
 
-async function askAI(key: string, group: string, names: string[], context: string, want: number, avoid: string[]): Promise<Q[]> {
+async function askAI(key: string, group: string, names: string[], context: string, want: number, avoid: string[], system: string): Promise<Q[]> {
   const user = `Grupo: ${group}
 Participantes: ${names.join(', ')}
 Número de preguntas a generar: ${want}
@@ -65,7 +77,7 @@ ${context}
     body: JSON.stringify({
       model: Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5-5',
       max_tokens: 6000,
-      system: SYSTEM,
+      system,
       messages: [{ role: 'user', content: user }],
     }),
   })
@@ -96,7 +108,8 @@ async function generateAll(admin: any, room: any, context: string, names: string
     while (made < target && attempts < 8) {
       attempts++
       const want = Math.min(BATCH, target - made)
-      const batch = await askAI(key, room.name, names, context, want, prompts)
+      const system = room.game_type === 'vaca' ? VACA : SYSTEM
+      const batch = await askAI(key, room.name, names, context, want, prompts, system)
       for (const q of batch) {
         if (made >= target) break
         if (prompts.some((p) => p.toLowerCase() === q.prompt.toLowerCase())) continue
