@@ -26,3 +26,43 @@ button.ghost.dark { background: #eee; color: #333; }
 button.rec { background: #e21b3c; }
 .draft { border-top: 1px solid #eee; padding: 10px 0; }
 .draft input[type=checkbox] { width: auto; }
+
+/* Pestañas */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.tabs button { background: rgba(255,255,255,.2); box-shadow: none; padding: 10px 14px; }
+.tabs button.ghost.dark { background: rgba(255,255,255,.2); color: #fff; }
+.tabs button:not(.ghost):not(.dark) { background: #fff; color: #46178f; box-shadow: 0 4px 0 rgba(0,0,0,.2); }
+nav.main { margin-top: 4px; }
+.tab { background: rgba(255,255,255,.2) !important; color: #fff !important; box-shadow: none !important; }
+.tab.on { background: #fff !important; color: #46178f !important; box-shadow: 0 4px 0 rgba(0,0,0,.2) !important; }
+.hero { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hero h2 { margin: 0; }
+.empty { color: #fff; text-align: center; }
+
+/* Asistente de salas */
+.wizard .steps { color: #888; margin: 0; }
+.bar { height: 8px; background: #eee; border-radius: 8px; overflow: hidden; margin: 8px 0 16px; }
+.bar > div { height: 100%; background: #26890c; transition: width .3s; }
+.row.between { justify-content: space-between; }
+.choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.choice { background: #f3f0fb; color: #46178f; box-shadow: none; display: flex; flex-direction: column; align-items: center; padding: 18px 8px; border: 3px solid transparent; }
+.choice span { font-weight: 400; font-size: 14px; }
+.choice.on { border-color: #46178f; background: #e8defc; }
+.summary { list-style: none; padding: 0; } .summary li { padding: 6px 0; }
+
+/* Salas */
+.rooms { display: grid; gap: 12px; }
+.room { background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 4px 0 rgba(0,0,0,.2); border-left: 8px solid #bbb; }
+.room.ok { border-left-color: #26890c; } .room.wait { border-left-color: #d89e00; } .room.bad { border-left-color: #e21b3c; }
+.room-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #eee; }
+.chip.ok { background: #d9f2cf; color: #1d5f08; } .chip.wait { background: #fbeec2; color: #6b4d00; } .chip.bad { background: #fbd5dc; color: #8a0d25; }
+
+/* Paquetes y preguntas */
+.answer { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
+.answer input { margin: 0; }
+button.tic { width: 46px; height: 46px; flex: none; border-radius: 50%; padding: 0; background: #eee; color: #aaa; box-shadow: none; font-size: 20px; }
+button.tic.on { background: #26890c; color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+.tf { font-size: 18px; }
+.qrev { border-top: 1px solid #eee; padding: 10px 0; }
+.right { color: #1d5f08; font-weight: 800; } .wrong { color: #666; }

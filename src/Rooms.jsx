@@ -1,93 +1,172 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { EventsCard } from './Events.jsx'
 
-const STATUS = {
-  generating: '⏳ Generando preguntas… (tarda unos minutos)',
-  pending: '🔎 En revisión por el webmaster',
-  approved: '✅ Aprobada: pulsa para ver el enlace',
-  rejected: '❌ Rechazada',
-  failed: '⚠️ No se pudieron generar las preguntas. Crea la sala de nuevo.',
+const CONTEXT_MIN = 200
+const CONTEXT_MAX = 12000
+
+const STATE = {
+  generating: { label: '⏳ Generando preguntas', tone: 'wait' },
+  pending: { label: '🔎 En revisión', tone: 'wait' },
+  approved: { label: '✅ Lista para jugar', tone: 'ok' },
+  rejected: { label: '❌ Rechazada', tone: 'bad' },
+  failed: { label: '⚠️ No se pudieron generar las preguntas', tone: 'bad' },
 }
 
-// Crear una sala nueva: nombres, duración y contexto del grupo
-function NewRoom({ onCreated }) {
+const roomLink = (room) => `${window.location.origin}/?s=${room.invite_token}`
+
+// Asistente para crear una sala en 4 pasos
+function NewRoomWizard({ onDone, onCancel }) {
+  const [step, setStep] = useState(0)
   const [name, setName] = useState('')
   const [names, setNames] = useState('')
   const [length, setLength] = useState(15)
   const [context, setContext] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
 
-  async function create(e) {
-    e.preventDefault()
+  const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
+  const uniq = new Set(list.map((n) => n.toLowerCase())).size
+
+  const checks = [
+    () => {
+      if (!name.trim()) return 'Ponle un nombre a la sala'
+      if (list.length < 2) return 'Escribe al menos 2 participantes'
+      if (list.length > 8) return 'Como máximo 8 participantes'
+      if (uniq !== list.length) return 'Hay nombres repetidos'
+      return ''
+    },
+    () => '',
+    () => (context.trim().length < CONTEXT_MIN ? `Cuenta un poco más (mínimo ${CONTEXT_MIN} caracteres)` : ''),
+  ]
+
+  function next() {
+    const problem = checks[step]()
+    setErr(problem)
+    if (!problem) setStep(step + 1)
+  }
+
+  async function create() {
     setBusy(true)
-    const list = names.split(/[\n,]+/).map((n) => n.trim()).filter(Boolean)
+    setErr('')
     const { data: id, error } = await supabase.rpc('create_room_request', {
-      p_name: name, p_length: Number(length), p_names: list, p_context: context,
+      p_name: name.trim(), p_length: Number(length), p_names: list, p_context: context.trim(),
     })
-    if (error) { setBusy(false); return alert(error.message) }
-
+    if (error) { setBusy(false); return setErr(error.message) }
     const { error: e2 } = await supabase.functions.invoke('generate-room', { body: { room_id: id } })
     setBusy(false)
-    if (e2) alert('La sala está creada, pero no se han podido empezar a generar las preguntas: ' + e2.message)
-    setName(''); setNames(''); setContext('')
-    onCreated?.()
+    if (e2) return setErr('La sala está creada, pero no se han podido empezar las preguntas: ' + e2.message)
+    onDone()
   }
 
   return (
-    <form className="card" onSubmit={create}>
-      <h2>Nueva sala</h2>
-      <input placeholder="Nombre de la sala (ej. Cumple de Isa)" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
-      <p>Participantes (2 a 8, uno por línea o separados por comas):</p>
-      <textarea rows={3} style={{ width: '100%' }} value={names} onChange={(e) => setNames(e.target.value)} placeholder={'Isa\nMarta\nCarlos'} required />
-      <p>Duración: <select value={length} onChange={(e) => setLength(e.target.value)} style={{ width: 200 }}>
-        <option value={15}>Rápida (15 preguntas)</option>
-        <option value={30}>Media (30 preguntas)</option>
-        <option value={50}>Larga (50 preguntas)</option>
-      </select></p>
-      <p>Cuenta todo lo que sepas del grupo: anécdotas, apodos, viajes, gustos, manías… Cuanto más detalle, mejores preguntas.</p>
-      <textarea rows={12} style={{ width: '100%' }} value={context} onChange={(e) => setContext(e.target.value)} maxLength={12000} required placeholder="Escribe aquí el contexto del grupo…" />
-      <small>{context.length} / 12000 caracteres (mínimo 200)</small>
-      <p><button disabled={busy}>{busy ? 'Creando…' : 'Crear sala'}</button></p>
-    </form>
+    <div className="card wizard">
+      <p className="steps">Paso {step + 1} de 4</p>
+      <div className="bar"><div style={{ width: `${((step + 1) / 4) * 100}%` }} /></div>
+
+      {step === 0 && (
+        <>
+          <h2>¿Cómo se llama la fiesta?</h2>
+          <input placeholder="Ej. Cumple de Isa" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus />
+          <h3>¿Quién juega?</h3>
+          <textarea rows={4} style={{ width: '100%' }} value={names} onChange={(e) => setNames(e.target.value)} placeholder={'Isa\nMarta\nCarlos'} />
+          <small>{list.length} de 8 · uno por línea o separados por comas</small>
+        </>
+      )}
+
+      {step === 1 && (
+        <>
+          <h2>¿Cuánto queréis jugar?</h2>
+          <div className="choices">
+            {[[15, 'Rápida', '15 preguntas'], [30, 'Media', '30 preguntas'], [50, 'Larga', '50 preguntas']].map(([n, t, s]) => (
+              <button key={n} type="button" className={`choice ${Number(length) === n ? 'on' : ''}`} onClick={() => setLength(n)}>
+                <b>{t}</b><span>{s}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {step === 2 && (
+        <>
+          <h2>Cuéntanos del grupo</h2>
+          <p><small>Anécdotas, apodos, viajes, gustos, manías… Cuanto más detalle, mejores preguntas.</small></p>
+          <textarea rows={12} style={{ width: '100%' }} value={context} onChange={(e) => setContext(e.target.value)} maxLength={CONTEXT_MAX} placeholder="Escribe aquí…" />
+          <small>{context.length} / {CONTEXT_MAX}</small>
+        </>
+      )}
+
+      {step === 3 && (
+        <>
+          <h2>Todo listo</h2>
+          <ul className="summary">
+            <li><b>Sala:</b> {name}</li>
+            <li><b>Jugadores:</b> {list.join(', ')}</li>
+            <li><b>Duración:</b> {length} preguntas</li>
+          </ul>
+          <p><small>Las preguntas se preparan en 1-3 minutos. Después las revisa el webmaster y, cuando estén listas, te aparece el enlace para WhatsApp.</small></p>
+        </>
+      )}
+
+      {err && <p className="msg">{err}</p>}
+
+      <p className="row between">
+        {step === 0 ? <button className="ghost dark" onClick={onCancel}>Cancelar</button> : <button className="ghost dark" onClick={() => { setErr(''); setStep(step - 1) }}>← Atrás</button>}
+        {step < 3
+          ? <button onClick={next}>Siguiente →</button>
+          : <button disabled={busy} onClick={create}>{busy ? 'Creando…' : 'Crear sala'}</button>}
+      </p>
+    </div>
   )
 }
 
-// Mis salas: estado de cada una y acceso al enlace cuando esta aprobada
+// Tarjetas de mis salas con su estado y el enlace cuando ya está lista
 function MyRooms({ user, openRoom, refreshKey }) {
   const [rooms, setRooms] = useState([])
+  const [copied, setCopied] = useState('')
   const load = async () => {
     const { data } = await supabase.from('rooms').select('*').eq('host_id', user.id).order('created_at', { ascending: false })
     setRooms(data || [])
   }
   useEffect(() => { load() }, [refreshKey])
   useEffect(() => {
-    const t = setInterval(load, 5000) // para ver cuando cambia el estado de revision
+    const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [])
 
+  async function copy(room) {
+    try { await navigator.clipboard.writeText(roomLink(room)); setCopied(room.id); setTimeout(() => setCopied(''), 1500) } catch { window.prompt('Copia el enlace:', roomLink(room)) }
+  }
+
+  if (!rooms.length) return <p className="empty">Aún no has creado ninguna sala.</p>
   return (
-    <div className="card">
-      <h2>Mis salas ({rooms.length}/5)</h2>
-      <ul className="list">
-        {rooms.map((r) => (
-          <li key={r.id} className="row">
-            <span style={{ flex: 1 }}>
-              <b>{r.name || 'Sala'}</b><br />
-              <small>{STATUS[r.review_status] || r.review_status}</small>
-            </span>
-            {r.review_status === 'approved' && <button onClick={() => openRoom(r)}>Ver enlace</button>}
-          </li>
-        ))}
-        {!rooms.length && <li>Aún no tienes salas.</li>}
-      </ul>
+    <div className="rooms">
+      {rooms.map((r) => {
+        const st = STATE[r.review_status] || { label: r.review_status, tone: 'wait' }
+        return (
+          <div key={r.id} className={`room ${st.tone}`}>
+            <div className="room-head">
+              <b>{r.name || 'Sala'}</b>
+              <span className={`chip ${st.tone}`}>{st.label}</span>
+            </div>
+            <small>{r.total_questions} preguntas · {r.status === 'lobby' ? 'esperando jugadores' : r.status === 'finished' ? 'terminada' : 'en juego'}</small>
+            {r.review_status === 'approved' && (
+              <p className="row">
+                <button onClick={() => copy(r)}>{copied === r.id ? '✔ Enlace copiado' : '📋 Copiar enlace'}</button>
+                <button className="ghost dark" onClick={() => openRoom(r)}>Ver sala</button>
+              </p>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 // Webmaster: revisar las preguntas, quitar las que no valgan, aprobar o rechazar
-function Review() {
+export function Review() {
   const [rooms, setRooms] = useState([])
-  const [removed, setRemoved] = useState({}) // { [roomId]: { [questionId]: true } }
+  const [removed, setRemoved] = useState({})
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
@@ -111,53 +190,56 @@ function Review() {
     load()
   }
 
+  if (!rooms.length) return <p className="empty">No hay salas esperando revisión.</p>
   return (
-    <div className="card">
-      <h2>🔎 Revisión de salas</h2>
-      {!rooms.length && <p>No hay salas pendientes.</p>}
+    <>
       {rooms.map((room) => {
         const left = room.questions.filter((q) => !removed[room.id]?.[q.id]).length
         return (
-          <div key={room.id} className="draft">
-            <h3>{room.name} · {room.questions.length} preguntas generadas</h3>
-            <p><small>Marca con ✖ las preguntas que no quieres. Quedarán {left}.</small></p>
+          <div key={room.id} className="card">
+            <h2>{room.name}</h2>
+            <p><small>Marca con la casilla las preguntas que quieras quitar. Quedarán {left}.</small></p>
             {room.questions.map((q, i) => (
-              <div key={q.id} style={{ opacity: removed[room.id]?.[q.id] ? 0.4 : 1, marginBottom: 8 }}>
+              <div key={q.id} className="qrev" style={{ opacity: removed[room.id]?.[q.id] ? 0.4 : 1 }}>
                 <label className="row">
                   <input type="checkbox" checked={!!removed[room.id]?.[q.id]} onChange={() => toggle(room.id, q.id)} />
                   <b>{i + 1}. {q.prompt}</b>
                 </label>
                 {q.options.map((o, k) => (
-                  <div key={k} style={{ fontWeight: k === q.correct ? 800 : 400 }}>
-                    {k === q.correct ? '✔ ' : '· '}{o}
-                  </div>
+                  <div key={k} className={k === q.correct ? 'right' : 'wrong'}>{k === q.correct ? '✔ ' : '· '}{o}</div>
                 ))}
               </div>
             ))}
-            <p className="row">
-              <button disabled={busy} onClick={() => decide(room, true)}>Aprobar sala</button>
+            <p className="row between">
+              <button disabled={busy} onClick={() => decide(room, true)}>✅ Aprobar sala</button>
               <button className="ghost dark" disabled={busy} onClick={() => decide(room, false)}>Rechazar</button>
             </p>
           </div>
         )
       })}
-    </div>
+    </>
   )
 }
 
-// Pantalla principal del game master (y del webmaster, si lo es)
-export function Home({ user, openRoom }) {
-  const [wm, setWm] = useState(false)
+// Pestaña Salas: crear, ver el estado y compartir
+export function SalasTab({ user, openRoom }) {
+  const [creating, setCreating] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  useEffect(() => {
-    supabase.from('profiles').select('is_webmaster').eq('id', user.id).single()
-      .then(({ data }) => setWm(!!data?.is_webmaster))
-  }, [user.id])
   return (
     <>
-      <NewRoom onCreated={() => setRefreshKey((k) => k + 1)} />
+      {creating
+        ? <NewRoomWizard onDone={() => { setCreating(false); setRefreshKey((k) => k + 1) }} onCancel={() => setCreating(false)} />
+        : (
+          <div className="card hero">
+            <h2>Tus salas</h2>
+            <button onClick={() => setCreating(true)}>＋ Nueva sala</button>
+          </div>
+        )}
       <MyRooms user={user} openRoom={openRoom} refreshKey={refreshKey} />
-      {wm && <Review />}
+      <details className="card">
+        <summary><b>💌 Quedadas sorpresa</b></summary>
+        <EventsCard onPackCreated={() => {}} />
+      </details>
     </>
   )
 }
